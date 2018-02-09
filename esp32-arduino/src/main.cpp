@@ -20,8 +20,8 @@
 #define RELAY_DISPENSER 14
 
 #define IR_CONVEYOR_STEP 17
-#define IR_BALL_DISPENSED 18
-#define IR_BOX_IN_PLACE 19
+#define IR_DISPENSER_NO_BALL 18
+#define IR_BOX_NOT_IN_PLACE 19
 
 void ledSet(uint8_t ubPin, bool isHigh) {
 	// LEDs have inverted logic - they're on when set to 0
@@ -45,25 +45,23 @@ void relaySet(uint8_t ubPin, bool isClosed) {
 }
 
 void setup() {
-    // put your setup code here, to run once:
-		// pinMode(22, OUTPUT);
-		// pinMode(17, OUTPUT);
-		// pinMode(19, OUTPUT);
-		// pinMode(32, INPUT);
-		Serial.begin(9600);
+	Serial.begin(9600);
 
-		ledSetup(LED_CONVEYOR);
-		ledSetup(LED_DISPENSER);
-		ledSetup(LED_MODE);
-		ledSetup(LED_STATUS);
-		ledSetup(LED_ERROR);
+	ledSetup(LED_CONVEYOR);
+	ledSetup(LED_DISPENSER);
+	ledSetup(LED_MODE);
+	ledSetup(LED_STATUS);
+	ledSetup(LED_ERROR);
 
-		pinMode(BTN_CONVEYOR, INPUT_PULLDOWN);
-		pinMode(BTN_DISPENSER, INPUT_PULLDOWN);
-		pinMode(BTN_MODE, INPUT_PULLDOWN);
-		pinMode(BTN_STATUS, INPUT_PULLDOWN);
-		pinMode(BTN_ERROR, INPUT_PULLDOWN);
+	pinMode(BTN_CONVEYOR, INPUT_PULLDOWN);
+	pinMode(BTN_DISPENSER, INPUT_PULLDOWN);
+	pinMode(BTN_MODE, INPUT_PULLDOWN);
+	pinMode(BTN_STATUS, INPUT_PULLDOWN);
+	pinMode(BTN_ERROR, INPUT_PULLDOWN);
 
+	pinMode(IR_CONVEYOR_STEP, INPUT);
+	pinMode(IR_DISPENSER_NO_BALL, INPUT);
+	pinMode(IR_BOX_NOT_IN_PLACE, INPUT);
 }
 
 void loop() {
@@ -88,10 +86,10 @@ void loop() {
 	// digitalWrite(17, 1);
 	// digitalWrite(19, 0);
 
-	ledSet(LED_CONVEYOR, digitalRead(BTN_CONVEYOR));
-	ledSet(LED_DISPENSER, digitalRead(BTN_DISPENSER));
-	ledSet(LED_MODE, digitalRead(BTN_MODE));
-	ledSet(LED_STATUS, digitalRead(BTN_STATUS));
-	ledSet(LED_ERROR, digitalRead(BTN_ERROR));
-	delay(100);
+	ledSet(LED_CONVEYOR, digitalRead(IR_CONVEYOR_STEP));
+	ledSet(LED_DISPENSER, !digitalRead(IR_DISPENSER_NO_BALL));
+	ledSet(LED_STATUS, !digitalRead(IR_BOX_NOT_IN_PLACE));
+	// ledSet(LED_MODE, digitalRead(BTN_MODE));
+	// ledSet(LED_ERROR, digitalRead(BTN_ERROR));
+	delay(5);
 }
