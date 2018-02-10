@@ -36,15 +36,16 @@ void ledSetup(uint8_t ubPin) {
 	ledSet(ubPin, 0);
 }
 
+void relaySet(uint8_t ubPin, bool isClosed) {
+	digitalWrite(ubPin, !isClosed);
+}
+
 void relaySetup(uint8_t ubPin) {
 	pinMode(ubPin, OUTPUT);
+	relaySet(ubPin, false);
 }
 
-void relaySet(uint8_t ubPin, bool isClosed) {
-	digitalWrite(ubPin, isClosed);
-}
-
-void setup() {
+void setup(void) {
 	Serial.begin(9600);
 
 	ledSetup(LED_CONVEYOR);
@@ -62,9 +63,12 @@ void setup() {
 	pinMode(IR_CONVEYOR_STEP, INPUT);
 	pinMode(IR_DISPENSER_NO_BALL, INPUT);
 	pinMode(IR_BOX_NOT_IN_PLACE, INPUT);
+
+	relaySetup(RELAY_CONVEYOR);
+	relaySetup(RELAY_DISPENSER);
 }
 
-void loop() {
+void loop(void) {
 	// static bool isPrevHigh = true;
 	// // put your main code here, to run repeatedly:
 
@@ -89,6 +93,9 @@ void loop() {
 	ledSet(LED_CONVEYOR, digitalRead(IR_CONVEYOR_STEP));
 	ledSet(LED_DISPENSER, !digitalRead(IR_DISPENSER_NO_BALL));
 	ledSet(LED_STATUS, !digitalRead(IR_BOX_NOT_IN_PLACE));
+
+	relaySet(RELAY_CONVEYOR, digitalRead(BTN_CONVEYOR));
+	relaySet(RELAY_DISPENSER, digitalRead(BTN_DISPENSER));
 	// ledSet(LED_MODE, digitalRead(BTN_MODE));
 	// ledSet(LED_ERROR, digitalRead(BTN_ERROR));
 	delay(5);
