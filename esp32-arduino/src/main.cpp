@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <input.h>
 
 // ESP32:
 // Pin 0 doesn't work well for btn.
@@ -45,6 +46,20 @@ void relaySetup(uint8_t ubPin) {
 	relaySet(ubPin, false);
 }
 
+// Buttons
+tInput
+	s_ButtonConveyor(BTN_CONVEYOR, tPullType::DOWN),
+	s_ButtonDispenser(BTN_DISPENSER, tPullType::DOWN),
+	s_ButtonMode(BTN_MODE, tPullType::DOWN),
+	s_ButtonStatus(BTN_STATUS, tPullType::DOWN),
+	s_ButtonError(BTN_ERROR, tPullType::DOWN);
+
+// IRs
+tInput
+	s_IrConveyorStep(IR_CONVEYOR_STEP, tPullType::NONE, false, 1),
+	s_IrDispenserBall(IR_DISPENSER_NO_BALL, tPullType::NONE, true, 1),
+	s_IrBoxInPosition(IR_BOX_NOT_IN_PLACE, tPullType::NONE, true, 1);
+
 void setup(void) {
 	Serial.begin(9600);
 
@@ -54,49 +69,17 @@ void setup(void) {
 	ledSetup(LED_STATUS);
 	ledSetup(LED_ERROR);
 
-	pinMode(BTN_CONVEYOR, INPUT_PULLDOWN);
-	pinMode(BTN_DISPENSER, INPUT_PULLDOWN);
-	pinMode(BTN_MODE, INPUT_PULLDOWN);
-	pinMode(BTN_STATUS, INPUT_PULLDOWN);
-	pinMode(BTN_ERROR, INPUT_PULLDOWN);
-
-	pinMode(IR_CONVEYOR_STEP, INPUT);
-	pinMode(IR_DISPENSER_NO_BALL, INPUT);
-	pinMode(IR_BOX_NOT_IN_PLACE, INPUT);
-
 	relaySetup(RELAY_CONVEYOR);
 	relaySetup(RELAY_DISPENSER);
 }
 
 void loop(void) {
-	// static bool isPrevHigh = true;
-	// // put your main code here, to run repeatedly:
+	inputProcessAll();
 
-	// bool isHigh = digitalRead(32);
+	ledSet(LED_CONVEYOR, s_IrConveyorStep.isActive());
+	ledSet(LED_DISPENSER, s_IrDispenserBall.isActive());
+	ledSet(LED_STATUS, s_IrBoxInPosition.isActive());
 
-	// digitalWrite(22, isHigh);
-	// delay(10);
-	// if(!isHigh && isPrevHigh) {
-	// 	Serial.write("zb\r\n");
-	// }
-
-	// isPrevHigh = isHigh;
-
-	// delay(1000);
-	// digitalWrite(17, 0);
-	// digitalWrite(19, 1);
-
-	// delay(1000);
-	// digitalWrite(17, 1);
-	// digitalWrite(19, 0);
-
-	ledSet(LED_CONVEYOR, digitalRead(IR_CONVEYOR_STEP));
-	ledSet(LED_DISPENSER, !digitalRead(IR_DISPENSER_NO_BALL));
-	ledSet(LED_STATUS, !digitalRead(IR_BOX_NOT_IN_PLACE));
-
-	relaySet(RELAY_CONVEYOR, digitalRead(BTN_CONVEYOR));
-	relaySet(RELAY_DISPENSER, digitalRead(BTN_DISPENSER));
-	// ledSet(LED_MODE, digitalRead(BTN_MODE));
-	// ledSet(LED_ERROR, digitalRead(BTN_ERROR));
-	delay(5);
+	relaySet(RELAY_CONVEYOR, s_ButtonConveyor.isActive());
+	relaySet(RELAY_DISPENSER, s_ButtonDispenser.isActive());
 }
