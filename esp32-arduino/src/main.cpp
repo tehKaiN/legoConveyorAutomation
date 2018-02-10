@@ -56,12 +56,13 @@ tInput
 
 // IRs
 tInput
-	s_IrConveyorStep(IR_CONVEYOR_STEP, tPullType::NONE, false, 1),
-	s_IrDispenserBall(IR_DISPENSER_NO_BALL, tPullType::NONE, true, 1),
-	s_IrBoxInPosition(IR_BOX_NOT_IN_PLACE, tPullType::NONE, true, 1);
+	s_IrConveyorStep(IR_CONVEYOR_STEP, tPullType::NONE, false),
+	s_IrDispenserBall(IR_DISPENSER_NO_BALL, tPullType::NONE, true),
+	s_IrBoxInPosition(IR_BOX_NOT_IN_PLACE, tPullType::NONE, true);
 
 void setup(void) {
 	Serial.begin(9600);
+	Serial.write("HELO\r\n");
 
 	ledSetup(LED_CONVEYOR);
 	ledSetup(LED_DISPENSER);
@@ -73,13 +74,73 @@ void setup(void) {
 	relaySetup(RELAY_DISPENSER);
 }
 
+enum class tControlMode: uint8_t {
+	MANUAL = 0,
+	AUTO = 1
+};
+
+static tControlMode s_eMode = tControlMode::MANUAL;
+static bool s_isError = false;
+
+static uint8_t s_ubBallCount = 0;
+
+static bool s_isStatusDone = false;
+
+void errorSet(void) {
+	s_isError = true;
+	s_isStatusDone = false;
+}
+
 void loop(void) {
+	bool isRelayConveyorEnabled = false, isRelayDispenserEnabled = false;
 	inputProcessAll();
 
-	ledSet(LED_CONVEYOR, s_IrConveyorStep.isActive());
-	ledSet(LED_DISPENSER, s_IrDispenserBall.isActive());
-	ledSet(LED_STATUS, s_IrBoxInPosition.isActive());
+	switch(s_eMode) {
+		case tControlMode::MANUAL:
+			if(s_ButtonConveyor.isActive() && !s_ButtonDispenser.isActive()) {
+				isRelayConveyorEnabled = true;
+			}
+			else if(s_ButtonDispenser.isActive() && !s_ButtonConveyor.isActive()) {
+				isRelayDispenserEnabled = true;
+			}
 
-	relaySet(RELAY_CONVEYOR, s_ButtonConveyor.isActive());
-	relaySet(RELAY_DISPENSER, s_ButtonDispenser.isActive());
+			// Status LED - light up after box reaches dispenser
+			// or all balls get dispensed
+			if(isRelayConveyorEnabled) {
+				if(s_IrBoxInPosition.hasRised()) {
+					s_isStatusDone = true;
+					s_ubBallCount = 0;
+				}
+			}
+			else if(isRelayDispenserEnabled) {
+				if(s_IrDispenserBall.hasRised()) {
+					++s_ubBallCount;
+				}
+				if(s_ubBallCount == 5) {
+					s_isStatusDone = true;
+				}
+				else if(s_ubBallCount > 5) {
+					errorSet();
+				}
+			}
+			else {
+				s_isStatusDone = false;
+			}
+			break;
+		case tControlMode::AUTO:
+			break;
+	}
+
+	if(s_isError) {
+		isRelayConveyorEnabled = false;
+		isRelayDispenserEnabled = false;
+	}
+
+	relaySet(RELAY_CONVEYOR, isRelayConveyorEnabled);
+	relaySet(RELAY_DISPENSER, isRelayDispenserEnabled);
+	ledSet(LED_CONVEYOR, isRelayConveyorEnabled);
+	ledSet(LED_DISPENSER, isRelayDispenserEnabled);
+	ledSet(LED_MODE, s_eMode == tControlMode::AUTO);
+	ledSet(LED_STATUS, s_isStatusDone);
+	ledSet(LED_ERROR, s_isError);
 }
