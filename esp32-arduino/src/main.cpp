@@ -11,13 +11,13 @@
 #define LED_DISPENSER 26
 #define LED_MODE 25
 #define LED_STATUS 33
-#define LED_ERROR 32
+#define LED_EMERGENCY 32
 
 #define BTN_CONVEYOR 13
 #define BTN_DISPENSER 15
 #define BTN_MODE 2
 #define BTN_STATUS 5
-#define BTN_ERROR 4
+#define BTN_EMERGENCY 4
 
 #define RELAY_CONVEYOR 12
 #define RELAY_DISPENSER 14
@@ -25,8 +25,7 @@
 #define IR_CONVEYOR_STEP 17
 #define IR_DISPENSER_NO_BALL 18
 #define IR_BOX_NOT_IN_PLACE 19
-
-#define PIN_EXTERNAL_VOLTAGE 35
+#define IR_EXTERNAL_VOLTAGE 35
 
 void ledSet(uint8_t ubPin, bool isHigh) {
 	// LEDs have inverted logic - they're on when set to 0
@@ -47,11 +46,11 @@ tInput
 	s_ButtonDispenser(BTN_DISPENSER, tPullType::DOWN),
 	s_ButtonMode(BTN_MODE, tPullType::DOWN),
 	s_ButtonStatus(BTN_STATUS, tPullType::DOWN),
-	s_ButtonError(BTN_ERROR, tPullType::DOWN),
+	s_ButtonError(BTN_EMERGENCY, tPullType::DOWN),
 	// IRs
 	s_IrDispenserBall(IR_DISPENSER_NO_BALL, tPullType::NONE, true),
 	// External voltage
-	s_ExternalVoltage(PIN_EXTERNAL_VOLTAGE, tPullType::NONE);
+	s_ExternalVoltage(IR_EXTERNAL_VOLTAGE, tPullType::NONE);
 
 tConveyor s_Conveyor(IR_CONVEYOR_STEP, IR_BOX_NOT_IN_PLACE, RELAY_CONVEYOR);
 
@@ -63,7 +62,7 @@ void setup(void) {
 	ledSetup(LED_DISPENSER);
 	ledSetup(LED_MODE);
 	ledSetup(LED_STATUS);
-	ledSetup(LED_ERROR);
+	ledSetup(LED_EMERGENCY);
 
 	relaySetup(RELAY_DISPENSER);
 }
@@ -153,8 +152,6 @@ void loop(void) {
 			break;
 	}
 
-	s_Conveyor.setMoving(isRelayConveyorRequest);
-
 	// Status LED - light up after box reaches dispenser
 	// or all balls get dispensed
 	if(isRelayConveyorRequest) {
@@ -175,7 +172,10 @@ void loop(void) {
 		s_isStatusDone = false;
 	}
 
-	if(s_Conveyor.isError() || !s_ExternalVoltage.isActive()) {
+	if(
+		s_ButtonError.isActive() || !s_ExternalVoltage.isActive() ||
+		s_Conveyor.isError()
+	) {
 		errorSet();
 	}
 
@@ -183,31 +183,36 @@ void loop(void) {
 		isRelayConveyorRequest = false;
 		isRelayDispenserRequest = false;
 		bool isErrorRelatedHigh = (millis() / 200) & 1;
-		if(s_Conveyor.isError()) {
+		if(!s_ExternalVoltage.isActive()) {
+			isDispenserLedHigh = isErrorRelatedHigh;
+			isConveyorLedHigh = isErrorRelatedHigh;
+		}
+		else if(s_Conveyor.isError()) {
 			isConveyorLedHigh = isErrorRelatedHigh;
 		}
 		else if(0) {
 			// TODO: Dispenser
 			isDispenserLedHigh = isErrorRelatedHigh;
 		}
-		else if(!s_ExternalVoltage.isActive()) {
-			isDispenserLedHigh = isErrorRelatedHigh;
-			isConveyorLedHigh = isErrorRelatedHigh;
-		}
 
-		if(s_ButtonError.hasRised()) {
+		if(
+			s_ButtonStatus.hasRised() && !s_ButtonError.isActive() &&
+			s_ExternalVoltage.isActive()
+		) {
+			// Everything's ok - clear error
 			s_Conveyor.clearError();
 			errorClear();
 		}
 	}
 
+	s_Conveyor.setMoving(isRelayConveyorRequest);
 	s_Conveyor.processControl();
 	relaySet(RELAY_DISPENSER, isRelayDispenserRequest);
 	ledSet(LED_CONVEYOR, isConveyorLedHigh);
 	ledSet(LED_DISPENSER, isDispenserLedHigh);
 	ledSet(LED_MODE, s_eMode == tControlMode::AUTO);
 	ledSet(LED_STATUS, s_isStatusDone);
-	ledSet(LED_ERROR, s_isError);
+	ledSet(LED_EMERGENCY, s_isError);
 	uint32_t ulEnd = micros();
 	Serial.printf("Loop: %lu us, RPM: %.2f\r\n", ulEnd-ulStart, s_Conveyor.getRpm());
 }
