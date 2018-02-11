@@ -18,7 +18,7 @@ tConveyor::tConveyor(
 void tConveyor::setMoving(bool isMoveRequest)
 {
 	if(m_isError) {
-		m_isMoveRequest = 0;
+		m_isMoveRequest = false;
 	}
 	else {
 		m_isMoveRequest = isMoveRequest;
