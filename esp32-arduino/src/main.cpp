@@ -1,5 +1,7 @@
 #include <Arduino.h>
-#include <input.h>
+#include "input.h"
+#include "relay.h"
+#include "conveyor.h"
 
 // ESP32:
 // Pin 0 doesn't work well for btn.
@@ -37,15 +39,6 @@ void ledSetup(uint8_t ubPin) {
 	ledSet(ubPin, 0);
 }
 
-void relaySet(uint8_t ubPin, bool isClosed) {
-	digitalWrite(ubPin, !isClosed);
-}
-
-void relaySetup(uint8_t ubPin) {
-	pinMode(ubPin, OUTPUT);
-	relaySet(ubPin, false);
-}
-
 // Buttons
 tInput
 	s_ButtonConveyor(BTN_CONVEYOR, tPullType::DOWN),
@@ -56,12 +49,12 @@ tInput
 
 // IRs
 tInput
-	s_IrConveyorStep(IR_CONVEYOR_STEP, tPullType::NONE, false),
-	s_IrDispenserBall(IR_DISPENSER_NO_BALL, tPullType::NONE, true),
-	s_IrBoxInPosition(IR_BOX_NOT_IN_PLACE, tPullType::NONE, true);
+	s_IrDispenserBall(IR_DISPENSER_NO_BALL, tPullType::NONE, true);
+
+tConveyor s_Conveyor(IR_CONVEYOR_STEP, IR_BOX_NOT_IN_PLACE, RELAY_CONVEYOR);
 
 void setup(void) {
-	Serial.begin(9600);
+	Serial.begin(57600);
 	Serial.write("HELO\r\n");
 
 	ledSetup(LED_CONVEYOR);
@@ -70,7 +63,6 @@ void setup(void) {
 	ledSetup(LED_STATUS);
 	ledSetup(LED_ERROR);
 
-	relaySetup(RELAY_CONVEYOR);
 	relaySetup(RELAY_DISPENSER);
 }
 
@@ -91,56 +83,80 @@ void errorSet(void) {
 	s_isStatusDone = false;
 }
 
+void errorClear(void) {
+	s_isError = false;
+}
+
 void loop(void) {
-	bool isRelayConveyorEnabled = false, isRelayDispenserEnabled = false;
+	bool isConveyorLedHigh = false, isDispenserLedHigh = false, isModeLedHigh = false;
+	uint32_t ulStart = micros();
+	bool isRelayConveyorRequest = false, isRelayDispenserRequest = false;
 	inputProcessAll();
+	s_Conveyor.processLogic();
 
 	switch(s_eMode) {
 		case tControlMode::MANUAL:
 			if(s_ButtonConveyor.isActive() && !s_ButtonDispenser.isActive()) {
-				isRelayConveyorEnabled = true;
+				isRelayConveyorRequest = true;
+				isConveyorLedHigh = true;
 			}
 			else if(s_ButtonDispenser.isActive() && !s_ButtonConveyor.isActive()) {
-				isRelayDispenserEnabled = true;
-			}
-
-			// Status LED - light up after box reaches dispenser
-			// or all balls get dispensed
-			if(isRelayConveyorEnabled) {
-				if(s_IrBoxInPosition.hasRised()) {
-					s_isStatusDone = true;
-					s_ubBallCount = 0;
-				}
-			}
-			else if(isRelayDispenserEnabled) {
-				if(s_IrDispenserBall.hasRised()) {
-					++s_ubBallCount;
-				}
-				if(s_ubBallCount == 5) {
-					s_isStatusDone = true;
-				}
-				else if(s_ubBallCount > 5) {
-					errorSet();
-				}
-			}
-			else {
-				s_isStatusDone = false;
+				isRelayDispenserRequest = true;
 			}
 			break;
 		case tControlMode::AUTO:
+			isModeLedHigh = (millis() / 1000) & 1;
 			break;
 	}
 
-	if(s_isError) {
-		isRelayConveyorEnabled = false;
-		isRelayDispenserEnabled = false;
+	s_Conveyor.setMoving(isRelayConveyorRequest);
+
+	// Status LED - light up after box reaches dispenser
+	// or all balls get dispensed
+	if(isRelayConveyorRequest) {
+		if(s_Conveyor.isBoxInPosition()) {
+			s_isStatusDone = true;
+			s_ubBallCount = 0;
+		}
+	}
+	else if(isRelayDispenserRequest) {
+		if(s_IrDispenserBall.hasRised()) {
+			++s_ubBallCount;
+		}
+		if(s_ubBallCount >= 5) {
+			s_isStatusDone = true;
+		}
+	}
+	else {
+		s_isStatusDone = false;
 	}
 
-	relaySet(RELAY_CONVEYOR, isRelayConveyorEnabled);
-	relaySet(RELAY_DISPENSER, isRelayDispenserEnabled);
-	ledSet(LED_CONVEYOR, isRelayConveyorEnabled);
-	ledSet(LED_DISPENSER, isRelayDispenserEnabled);
+	if(s_Conveyor.isError()) {
+		errorSet();
+	}
+	else {
+		errorClear();
+	}
+
+	if(s_isError) {
+		isRelayConveyorRequest = false;
+		isRelayDispenserRequest = false;
+
+		if(s_Conveyor.isError()) {
+			isConveyorLedHigh = (millis() / 200) & 1;
+			if(s_ButtonError.hasRised()) {
+				s_Conveyor.clearError();
+			}
+		}
+	}
+
+	s_Conveyor.processControl();
+	relaySet(RELAY_DISPENSER, isRelayDispenserRequest);
+	ledSet(LED_CONVEYOR, isConveyorLedHigh);
+	ledSet(LED_DISPENSER, isRelayDispenserRequest);
 	ledSet(LED_MODE, s_eMode == tControlMode::AUTO);
 	ledSet(LED_STATUS, s_isStatusDone);
 	ledSet(LED_ERROR, s_isError);
+	uint32_t ulEnd = micros();
+	Serial.printf("Loop: %lu us, RPM: %.2f\r\n", ulEnd-ulStart, s_Conveyor.getRpm());
 }
