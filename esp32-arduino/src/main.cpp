@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include "input.h"
-#include "relay.h"
 #include "conveyor.h"
+#include "dispenser.h"
 
 // ESP32:
 // Pin 0 doesn't work well for btn.
@@ -47,12 +47,13 @@ tInput
 	s_ButtonMode(BTN_MODE, tPullType::DOWN),
 	s_ButtonStatus(BTN_STATUS, tPullType::DOWN),
 	s_ButtonError(BTN_EMERGENCY, tPullType::DOWN),
-	// IRs
-	s_IrDispenserBall(IR_DISPENSER_NO_BALL, tPullType::NONE, true),
 	// External voltage
 	s_ExternalVoltage(IR_EXTERNAL_VOLTAGE, tPullType::NONE);
 
 tConveyor s_Conveyor(IR_CONVEYOR_STEP, IR_BOX_NOT_IN_PLACE, RELAY_CONVEYOR);
+tDispenser s_Dispenser(IR_DISPENSER_NO_BALL, RELAY_DISPENSER);
+
+const uint8_t s_ubBallCountGoal = 2;
 
 void setup(void) {
 	Serial.begin(57600);
@@ -63,8 +64,6 @@ void setup(void) {
 	ledSetup(LED_MODE);
 	ledSetup(LED_STATUS);
 	ledSetup(LED_EMERGENCY);
-
-	relaySetup(RELAY_DISPENSER);
 }
 
 enum class tControlMode: uint8_t {
@@ -74,14 +73,12 @@ enum class tControlMode: uint8_t {
 
 static tControlMode s_eMode = tControlMode::MANUAL;
 static bool s_isError = false;
-
-static uint8_t s_ubBallCount = 0;
-
 static bool s_isStatusDone = false;
 
 enum class tAutoState: uint8_t {
 	GOING_TO_DISPENSER,
-	DISPENSING_BALLS
+	DISPENSING_BALLS,
+	WAITING_FOR_FALL
 };
 
 tAutoState s_eAutoState = tAutoState::GOING_TO_DISPENSER;
@@ -102,6 +99,7 @@ void loop(void) {
 	bool isRelayConveyorRequest = false, isRelayDispenserRequest = false;
 	inputProcessAll();
 	s_Conveyor.processLogic();
+	s_Dispenser.processLogic();
 
 	switch(s_eMode) {
 		case tControlMode::MANUAL:
@@ -136,12 +134,17 @@ void loop(void) {
 						}
 					break;
 				case tAutoState::DISPENSING_BALLS:
-					if(s_ubBallCount >= 2) {
-						s_eAutoState = tAutoState::GOING_TO_DISPENSER;
+					if(s_Dispenser.getBallCount() >= s_ubBallCountGoal) {
+						s_eAutoState = tAutoState::WAITING_FOR_FALL;
 					}
 					else {
 						isRelayDispenserRequest = true;
 						isDispenserLedHigh = true;
+					}
+					break;
+				case tAutoState::WAITING_FOR_FALL:
+					if(s_Dispenser.hasLastBallFallen()) {
+						s_eAutoState = tAutoState::GOING_TO_DISPENSER;
 					}
 					break;
 			}
@@ -155,16 +158,13 @@ void loop(void) {
 	// Status LED - light up after box reaches dispenser
 	// or all balls get dispensed
 	if(isRelayConveyorRequest) {
-		s_ubBallCount = 0;
+		s_Dispenser.resetBallCounter();
 		if(s_Conveyor.isBoxInPosition()) {
 			s_isStatusDone = true;
 		}
 	}
 	else if(isRelayDispenserRequest) {
-		if(s_IrDispenserBall.hasRised()) {
-			++s_ubBallCount;
-		}
-		if(s_ubBallCount >= 2) {
+		if(s_Dispenser.getBallCount() >= s_ubBallCountGoal) {
 			s_isStatusDone = true;
 		}
 	}
@@ -174,12 +174,14 @@ void loop(void) {
 
 	if(
 		s_ButtonError.isActive() || !s_ExternalVoltage.isActive() ||
-		s_Conveyor.isError()
+		s_Conveyor.isError() || s_Dispenser.isError()
 	) {
 		errorSet();
 	}
 
 	if(s_isError) {
+		isConveyorLedHigh = false;
+		isDispenserLedHigh = false;
 		isRelayConveyorRequest = false;
 		isRelayDispenserRequest = false;
 		bool isErrorRelatedHigh = (millis() / 200) & 1;
@@ -190,8 +192,7 @@ void loop(void) {
 		else if(s_Conveyor.isError()) {
 			isConveyorLedHigh = isErrorRelatedHigh;
 		}
-		else if(0) {
-			// TODO: Dispenser
+		else if(s_Dispenser.isError()) {
 			isDispenserLedHigh = isErrorRelatedHigh;
 		}
 
@@ -201,18 +202,24 @@ void loop(void) {
 		) {
 			// Everything's ok - clear error
 			s_Conveyor.clearError();
+			s_Dispenser.clearError();
 			errorClear();
 		}
 	}
 
 	s_Conveyor.setMoving(isRelayConveyorRequest);
 	s_Conveyor.processControl();
-	relaySet(RELAY_DISPENSER, isRelayDispenserRequest);
+	s_Dispenser.setMoving(isRelayDispenserRequest);
+	s_Dispenser.processControl();
 	ledSet(LED_CONVEYOR, isConveyorLedHigh);
 	ledSet(LED_DISPENSER, isDispenserLedHigh);
 	ledSet(LED_MODE, s_eMode == tControlMode::AUTO);
 	ledSet(LED_STATUS, s_isStatusDone);
 	ledSet(LED_EMERGENCY, s_isError);
 	uint32_t ulEnd = micros();
-	Serial.printf("Loop: %lu us, RPM: %.2f\r\n", ulEnd-ulStart, s_Conveyor.getRpm());
+	Serial.printf(
+		"Loop took %lu us, RPM: %.2f, balls: %hhu, BPM: %.2f\r\n",
+		ulEnd-ulStart, s_Conveyor.getRpm(),
+		s_Dispenser.getBallCount(), s_Dispenser.getBpm()
+	);
 }
