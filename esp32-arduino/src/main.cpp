@@ -26,6 +26,8 @@
 #define IR_DISPENSER_NO_BALL 18
 #define IR_BOX_NOT_IN_PLACE 19
 
+#define PIN_EXTERNAL_VOLTAGE 35
+
 void ledSet(uint8_t ubPin, bool isHigh) {
 	// LEDs have inverted logic - they're on when set to 0
 	digitalWrite(ubPin, !isHigh);
@@ -39,17 +41,17 @@ void ledSetup(uint8_t ubPin) {
 	ledSet(ubPin, 0);
 }
 
-// Buttons
 tInput
+	// Buttons
 	s_ButtonConveyor(BTN_CONVEYOR, tPullType::DOWN),
 	s_ButtonDispenser(BTN_DISPENSER, tPullType::DOWN),
 	s_ButtonMode(BTN_MODE, tPullType::DOWN),
 	s_ButtonStatus(BTN_STATUS, tPullType::DOWN),
-	s_ButtonError(BTN_ERROR, tPullType::DOWN);
-
-// IRs
-tInput
-	s_IrDispenserBall(IR_DISPENSER_NO_BALL, tPullType::NONE, true);
+	s_ButtonError(BTN_ERROR, tPullType::DOWN),
+	// IRs
+	s_IrDispenserBall(IR_DISPENSER_NO_BALL, tPullType::NONE, true),
+	// External voltage
+	s_ExternalVoltage(PIN_EXTERNAL_VOLTAGE, tPullType::NONE);
 
 tConveyor s_Conveyor(IR_CONVEYOR_STEP, IR_BOX_NOT_IN_PLACE, RELAY_CONVEYOR);
 
@@ -110,6 +112,7 @@ void loop(void) {
 			}
 			else if(s_ButtonDispenser.isActive() && !s_ButtonConveyor.isActive()) {
 				isRelayDispenserRequest = true;
+				isDispenserLedHigh = true;
 			}
 
 			if(
@@ -172,29 +175,36 @@ void loop(void) {
 		s_isStatusDone = false;
 	}
 
-	if(s_Conveyor.isError()) {
+	if(s_Conveyor.isError() || !s_ExternalVoltage.isActive()) {
 		errorSet();
-	}
-	else {
-		errorClear();
 	}
 
 	if(s_isError) {
 		isRelayConveyorRequest = false;
 		isRelayDispenserRequest = false;
-
+		bool isErrorRelatedHigh = (millis() / 200) & 1;
 		if(s_Conveyor.isError()) {
-			isConveyorLedHigh = (millis() / 200) & 1;
-			if(s_ButtonError.hasRised()) {
-				s_Conveyor.clearError();
-			}
+			isConveyorLedHigh = isErrorRelatedHigh;
+		}
+		else if(0) {
+			// TODO: Dispenser
+			isDispenserLedHigh = isErrorRelatedHigh;
+		}
+		else if(!s_ExternalVoltage.isActive()) {
+			isDispenserLedHigh = isErrorRelatedHigh;
+			isConveyorLedHigh = isErrorRelatedHigh;
+		}
+
+		if(s_ButtonError.hasRised()) {
+			s_Conveyor.clearError();
+			errorClear();
 		}
 	}
 
 	s_Conveyor.processControl();
 	relaySet(RELAY_DISPENSER, isRelayDispenserRequest);
 	ledSet(LED_CONVEYOR, isConveyorLedHigh);
-	ledSet(LED_DISPENSER, isRelayDispenserRequest);
+	ledSet(LED_DISPENSER, isDispenserLedHigh);
 	ledSet(LED_MODE, s_eMode == tControlMode::AUTO);
 	ledSet(LED_STATUS, s_isStatusDone);
 	ledSet(LED_ERROR, s_isError);
