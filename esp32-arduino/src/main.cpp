@@ -78,9 +78,17 @@ static uint8_t s_ubBallCount = 0;
 
 static bool s_isStatusDone = false;
 
+enum class tAutoState: uint8_t {
+	GOING_TO_DISPENSER,
+	DISPENSING_BALLS
+};
+
+tAutoState s_eAutoState = tAutoState::GOING_TO_DISPENSER;
+
 void errorSet(void) {
 	s_isError = true;
 	s_isStatusDone = false;
+	s_eMode = tControlMode::MANUAL;
 }
 
 void errorClear(void) {
@@ -103,9 +111,42 @@ void loop(void) {
 			else if(s_ButtonDispenser.isActive() && !s_ButtonConveyor.isActive()) {
 				isRelayDispenserRequest = true;
 			}
+
+			if(
+				!s_ButtonDispenser.isActive() && !s_ButtonConveyor.isActive() &&
+				s_ButtonMode.hasRised()
+			) {
+				s_eMode = tControlMode::AUTO;
+				s_eAutoState = tAutoState::GOING_TO_DISPENSER;
+			}
 			break;
 		case tControlMode::AUTO:
 			isModeLedHigh = (millis() / 1000) & 1;
+
+			switch(s_eAutoState) {
+				case tAutoState::GOING_TO_DISPENSER:
+						if(!s_Conveyor.isBoxInPosition()) {
+							isRelayConveyorRequest = true;
+							isConveyorLedHigh = true;
+						}
+						else {
+							s_eAutoState = tAutoState::DISPENSING_BALLS;
+						}
+					break;
+				case tAutoState::DISPENSING_BALLS:
+					if(s_ubBallCount >= 2) {
+						s_eAutoState = tAutoState::GOING_TO_DISPENSER;
+					}
+					else {
+						isRelayDispenserRequest = true;
+						isDispenserLedHigh = true;
+					}
+					break;
+			}
+
+			if(s_ButtonMode.hasRised()) {
+				s_eMode = tControlMode::MANUAL;
+			}
 			break;
 	}
 
@@ -114,16 +155,16 @@ void loop(void) {
 	// Status LED - light up after box reaches dispenser
 	// or all balls get dispensed
 	if(isRelayConveyorRequest) {
+		s_ubBallCount = 0;
 		if(s_Conveyor.isBoxInPosition()) {
 			s_isStatusDone = true;
-			s_ubBallCount = 0;
 		}
 	}
 	else if(isRelayDispenserRequest) {
 		if(s_IrDispenserBall.hasRised()) {
 			++s_ubBallCount;
 		}
-		if(s_ubBallCount >= 5) {
+		if(s_ubBallCount >= 2) {
 			s_isStatusDone = true;
 		}
 	}
