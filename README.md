@@ -1,6 +1,6 @@
 # LEGO Conveyor Automation
 
-This is remains of a project i did during my automation studies. This project consists of:
+These are remains of a project i did during my automation studies. It's an attempt to use real electronic parts and motors to control a LEGO model. It's mostly complete but needs some additional work. This project consists of:
 
 - [LDCad](http://www.melkert.net/LDCad/) model of a simple conveyor-belt base production facility
 - [KiCad](http://kicad-pcb.org/) schematic of electronic wiring
