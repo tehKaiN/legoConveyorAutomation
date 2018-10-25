@@ -6,7 +6,7 @@ These are remains of a project i did during my automation studies. It's an attem
 
 - [LDCad](http://www.melkert.net/LDCad/) model of a simple conveyor-belt base production facility
 - [KiCad](http://kicad-pcb.org/) schematic of electronic wiring
-- [PlatformIO](https://platformio.org/) project for LOLIN32-lite board (any Arduino will do)
+- [PlatformIO](https://platformio.org/) project with the control firmware, for use with LOLIN32-lite board (any Arduino will do)
 
 Some photos are available here: https://imgur.com/a/gFlp7bf. Unfortunately I haven't recorded it in action before disassembly of electronics, but you have my word that conveyor and ball dispensers are moving as intended.
 
